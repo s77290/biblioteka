@@ -12,7 +12,10 @@
   <header>
     <div class="header-inner">
       <a href="index.html" class="logo">📚 Biblioteka</a>
-      <a href="index.html" class="btn-secondary">← Powrót</a>
+      <div class="header-actions">
+        <button class="btn-icon" id="themeToggle" title="Zmień motyw">🌙</button>
+        <a href="index.html" class="btn-secondary">← Powrót</a>
+      </div>
     </div>
   </header>
 
@@ -64,6 +67,22 @@
         <textarea id="description" rows="4" placeholder="Krótki opis książki..."></textarea>
       </div>
 
+      <div class="form-group">
+        <label for="coverUrl">Okładka (URL obrazka)</label>
+        <input type="url" id="coverUrl" placeholder="https://..." />
+      </div>
+
+      <div class="form-group">
+        <label>Twoja ocena</label>
+        <div class="star-input" id="starInput">
+          <span class="star" data-value="1">★</span>
+          <span class="star" data-value="2">★</span>
+          <span class="star" data-value="3">★</span>
+          <span class="star" data-value="4">★</span>
+          <span class="star" data-value="5">★</span>
+        </div>
+      </div>
+
       <button class="btn-primary full-width" id="submitBtn" onclick="addBook()">
         Dodaj książkę
       </button>
@@ -87,12 +106,40 @@
     const app = initializeApp(firebaseConfig);
     const db = getFirestore(app);
 
+    // --- Dark mode (synced with index.html) ---
+    const themeToggle = document.getElementById("themeToggle");
+    function applyTheme(theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      themeToggle.textContent = theme === "dark" ? "☀️" : "🌙";
+    }
+    applyTheme(localStorage.getItem("biblioteka-theme") || "light");
+    themeToggle.addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      applyTheme(current);
+      localStorage.setItem("biblioteka-theme", current);
+    });
+
+    let selectedRating = 0;
+    const stars = document.querySelectorAll("#starInput .star");
+    stars.forEach(star => {
+      star.addEventListener("click", () => {
+        selectedRating = parseInt(star.dataset.value);
+        updateStars();
+      });
+    });
+    function updateStars() {
+      stars.forEach(star => {
+        star.classList.toggle("active", parseInt(star.dataset.value) <= selectedRating);
+      });
+    }
+
     window.addBook = async function() {
       const title = document.getElementById("title").value.trim();
       const author = document.getElementById("author").value.trim();
       const year = document.getElementById("year").value.trim();
       const genre = document.getElementById("genre").value;
       const description = document.getElementById("description").value.trim();
+      const coverUrl = document.getElementById("coverUrl").value.trim();
 
       const successMsg = document.getElementById("successMsg");
       const errorMsg = document.getElementById("errorMsg");
@@ -117,6 +164,8 @@
           year: year ? parseInt(year) : null,
           genre: genre || null,
           description: description || null,
+          coverUrl: coverUrl || null,
+          rating: selectedRating || 0,
           createdAt: serverTimestamp()
         });
 
@@ -126,6 +175,9 @@
         document.getElementById("year").value = "";
         document.getElementById("genre").value = "";
         document.getElementById("description").value = "";
+        document.getElementById("coverUrl").value = "";
+        selectedRating = 0;
+        updateStars();
 
       } catch (err) {
         console.error(err);

@@ -12,7 +12,10 @@
   <header>
     <div class="header-inner">
       <a href="index.html" class="logo">📚 Biblioteka</a>
-      <a href="add.html" class="btn-primary">+ Dodaj książkę</a>
+      <div class="header-actions">
+        <button class="btn-icon" id="themeToggle" title="Zmień motyw">🌙</button>
+        <a href="add.html" class="btn-primary">+ Dodaj książkę</a>
+      </div>
     </div>
   </header>
 
@@ -22,8 +25,17 @@
       <p>Przechowuj, przeglądaj i zarządzaj swoimi książkami w jednym miejscu.</p>
     </section>
 
-    <div class="search-bar">
-      <input type="text" id="searchInput" placeholder="🔍 Szukaj po tytule lub autorze..." />
+    <div class="toolbar">
+      <div class="search-bar">
+        <input type="text" id="searchInput" placeholder="🔍 Szukaj po tytule lub autorze..." />
+      </div>
+      <button class="btn-secondary" id="randomBtn">🎲 Wylosuj książkę</button>
+      <button class="btn-secondary" id="statsBtn">📊 Statystyki</button>
+    </div>
+
+    <div id="statsPanel" class="stats-panel" style="display:none;">
+      <h3>Książki według gatunku</h3>
+      <div id="statsChart" class="stats-chart"></div>
     </div>
 
     <div id="bookCount" class="book-count"></div>
@@ -37,9 +49,11 @@
   <div id="modal" class="modal-overlay" style="display:none;">
     <div class="modal-box">
       <button class="modal-close" onclick="closeModal()">✕</button>
+      <img id="modalCover" class="modal-cover" style="display:none;" />
       <h2 id="modalTitle"></h2>
       <p class="modal-author" id="modalAuthor"></p>
       <p class="modal-year" id="modalYear"></p>
+      <p class="modal-rating" id="modalRating"></p>
       <p class="modal-desc" id="modalDesc"></p>
       <button class="btn-danger" id="modalDeleteBtn">🗑 Usuń książkę</button>
     </div>
@@ -65,11 +79,34 @@
     let allBooks = [];
     let currentDeleteId = null;
 
+    // --- Dark mode ---
+    const themeToggle = document.getElementById("themeToggle");
+    function applyTheme(theme) {
+      document.documentElement.setAttribute("data-theme", theme);
+      themeToggle.textContent = theme === "dark" ? "☀️" : "🌙";
+    }
+    const savedTheme = localStorage.getItem("biblioteka-theme") || "light";
+    applyTheme(savedTheme);
+    themeToggle.addEventListener("click", () => {
+      const current = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      applyTheme(current);
+      localStorage.setItem("biblioteka-theme", current);
+    });
+
     async function loadBooks() {
       const q = query(collection(db, "books"), orderBy("createdAt", "desc"));
       const snapshot = await getDocs(q);
       allBooks = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
       renderBooks(allBooks);
+    }
+
+    function starsHtml(rating) {
+      if (!rating) return "";
+      let html = "";
+      for (let i = 1; i <= 5; i++) {
+        html += `<span class="star-display ${i <= rating ? "filled" : ""}">★</span>`;
+      }
+      return `<div class="book-rating">${html}</div>`;
     }
 
     function renderBooks(books) {
@@ -91,11 +128,16 @@
       books.forEach(book => {
         const card = document.createElement("div");
         card.className = "book-card";
+        const coverHtml = book.coverUrl
+          ? `<img src="${book.coverUrl}" class="book-cover" onerror="this.style.display='none'" />`
+          : `<div class="book-cover-placeholder">📕</div>`;
         card.innerHTML = `
+          ${coverHtml}
           <div class="book-card-inner">
             <span class="book-year">${book.year || "—"}</span>
             <h3>${book.title}</h3>
             <p class="book-author">✍ ${book.author}</p>
+            ${starsHtml(book.rating)}
             <p class="book-desc">${book.description ? book.description.substring(0, 80) + "..." : "Brak opisu."}</p>
             <button class="btn-details">Zobacz szczegóły →</button>
           </div>
@@ -106,9 +148,18 @@
     }
 
     function openModal(book) {
+      const cover = document.getElementById("modalCover");
+      if (book.coverUrl) {
+        cover.src = book.coverUrl;
+        cover.style.display = "block";
+        cover.onerror = () => cover.style.display = "none";
+      } else {
+        cover.style.display = "none";
+      }
       document.getElementById("modalTitle").textContent = book.title;
       document.getElementById("modalAuthor").textContent = "Autor: " + book.author;
       document.getElementById("modalYear").textContent = book.year ? "Rok: " + book.year : "";
+      document.getElementById("modalRating").innerHTML = starsHtml(book.rating);
       document.getElementById("modalDesc").textContent = book.description || "Brak opisu.";
       currentDeleteId = book.id;
       document.getElementById("modal").style.display = "flex";
@@ -134,6 +185,52 @@
       );
       renderBooks(filtered);
     });
+
+    // --- Random book ---
+    document.getElementById("randomBtn").addEventListener("click", () => {
+      if (allBooks.length === 0) {
+        alert("Brak książek w bazie!");
+        return;
+      }
+      const random = allBooks[Math.floor(Math.random() * allBooks.length)];
+      openModal(random);
+    });
+
+    // --- Stats (genre chart) ---
+    document.getElementById("statsBtn").addEventListener("click", () => {
+      const panel = document.getElementById("statsPanel");
+      if (panel.style.display === "none") {
+        renderStats();
+        panel.style.display = "block";
+      } else {
+        panel.style.display = "none";
+      }
+    });
+
+    function renderStats() {
+      const counts = {};
+      allBooks.forEach(b => {
+        const genre = b.genre || "Nieokreślony";
+        counts[genre] = (counts[genre] || 0) + 1;
+      });
+      const max = Math.max(...Object.values(counts), 1);
+      const chart = document.getElementById("statsChart");
+      chart.innerHTML = "";
+      Object.entries(counts)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([genre, num]) => {
+          const row = document.createElement("div");
+          row.className = "stats-row";
+          row.innerHTML = `
+            <span class="stats-label">${genre}</span>
+            <div class="stats-bar-track">
+              <div class="stats-bar-fill" style="width:${(num / max) * 100}%"></div>
+            </div>
+            <span class="stats-value">${num}</span>
+          `;
+          chart.appendChild(row);
+        });
+    }
 
     loadBooks();
   </script>
