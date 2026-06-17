@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Biblioteka</title>
+  <link rel="stylesheet" href="style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Lora:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"/>
+</head>
+<body>
+
+  <header>
+    <div class="header-inner">
+      <a href="index.html" class="logo">📚 Biblioteka</a>
+      <a href="add.html" class="btn-primary">+ Dodaj książkę</a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Twoja kolekcja książek</h1>
+      <p>Przechowuj, przeglądaj i zarządzaj swoimi książkami w jednym miejscu.</p>
+    </section>
+
+    <div class="search-bar">
+      <input type="text" id="searchInput" placeholder="🔍 Szukaj po tytule lub autorze..." />
+    </div>
+
+    <div id="bookCount" class="book-count"></div>
+    <div id="bookList" class="book-grid"></div>
+    <div id="emptyState" class="empty-state" style="display:none;">
+      <p>📖 Brak książek. <a href="add.html">Dodaj pierwszą!</a></p>
+    </div>
+  </main>
+
+  <!-- Modal detalów -->
+  <div id="modal" class="modal-overlay" style="display:none;">
+    <div class="modal-box">
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <h2 id="modalTitle"></h2>
+      <p class="modal-author" id="modalAuthor"></p>
+      <p class="modal-year" id="modalYear"></p>
+      <p class="modal-desc" id="modalDesc"></p>
+      <button class="btn-danger" id="modalDeleteBtn">🗑 Usuń książkę</button>
+    </div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
+    import { getFirestore, collection, getDocs, deleteDoc, doc, query, orderBy }
+      from "https://www.gstatic.com/firebasejs/12.14.0/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyDURohJjc_YOpBLqeSo1ATamrXNkByVkD4",
+      authDomain: "biblioteka-77290.firebaseapp.com",
+      projectId: "biblioteka-77290",
+      storageBucket: "biblioteka-77290.firebasestorage.app",
+      messagingSenderId: "514973497921",
+      appId: "1:514973497921:web:a1f7e703a3542af3af24c0"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+
+    let allBooks = [];
+    let currentDeleteId = null;
+
+    async function loadBooks() {
+      const q = query(collection(db, "books"), orderBy("createdAt", "desc"));
+      const snapshot = await getDocs(q);
+      allBooks = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+      renderBooks(allBooks);
+    }
+
+    function renderBooks(books) {
+      const grid = document.getElementById("bookList");
+      const empty = document.getElementById("emptyState");
+      const count = document.getElementById("bookCount");
+
+      grid.innerHTML = "";
+
+      if (books.length === 0) {
+        empty.style.display = "block";
+        count.textContent = "";
+        return;
+      }
+
+      empty.style.display = "none";
+      count.textContent = `Znaleziono: ${books.length} książek`;
+
+      books.forEach(book => {
+        const card = document.createElement("div");
+        card.className = "book-card";
+        card.innerHTML = `
+          <div class="book-card-inner">
+            <span class="book-year">${book.year || "—"}</span>
+            <h3>${book.title}</h3>
+            <p class="book-author">✍ ${book.author}</p>
+            <p class="book-desc">${book.description ? book.description.substring(0, 80) + "..." : "Brak opisu."}</p>
+            <button class="btn-details">Zobacz szczegóły →</button>
+          </div>
+        `;
+        card.querySelector(".btn-details").addEventListener("click", () => openModal(book));
+        grid.appendChild(card);
+      });
+    }
+
+    function openModal(book) {
+      document.getElementById("modalTitle").textContent = book.title;
+      document.getElementById("modalAuthor").textContent = "Autor: " + book.author;
+      document.getElementById("modalYear").textContent = book.year ? "Rok: " + book.year : "";
+      document.getElementById("modalDesc").textContent = book.description || "Brak opisu.";
+      currentDeleteId = book.id;
+      document.getElementById("modal").style.display = "flex";
+    }
+
+    window.closeModal = function() {
+      document.getElementById("modal").style.display = "none";
+    };
+
+    document.getElementById("modalDeleteBtn").addEventListener("click", async () => {
+      if (!currentDeleteId) return;
+      if (!confirm("Czy na pewno chcesz usunąć tę książkę?")) return;
+      await deleteDoc(doc(db, "books", currentDeleteId));
+      closeModal();
+      loadBooks();
+    });
+
+    document.getElementById("searchInput").addEventListener("input", e => {
+      const q = e.target.value.toLowerCase();
+      const filtered = allBooks.filter(b =>
+        b.title.toLowerCase().includes(q) ||
+        b.author.toLowerCase().includes(q)
+      );
+      renderBooks(filtered);
+    });
+
+    loadBooks();
+  </script>
+</body>
+</html>
